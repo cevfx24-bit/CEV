@@ -9,7 +9,9 @@ permissions:
 
 jobs:
   build:
+    name: Build Android APK
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -21,10 +23,23 @@ jobs:
           java-version: '17'
 
       - name: Extract Android source
-        run: unzip -o CEV-MTik-Manager-Android-V1-Source.zip -d .
+        run: |
+          unzip -o CEV-MTik-Manager-Android-V1-Source.zip -d .
+
+      - name: Keep Kotlin Gradle files only
+        run: |
+          cd CEV-MTik-Manager-Android-V1
+          rm -f build.gradle
+          rm -f app/build.gradle
+          rm -f settings.gradle
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          packages: |
+            platform-tools
+            platforms;android-35
+            build-tools;35.0.0
 
       - name: Build debug APK
         uses: gradle/gradle-build-action@v3
