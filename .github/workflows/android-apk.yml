@@ -8,9 +8,8 @@ permissions:
 
 jobs:
   build:
-    name: Build Android APK
+    name: Build and validate Android APK
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -24,12 +23,14 @@ jobs:
       - name: Extract Android source
         run: unzip -o CEV-MTik-Manager-Android-V1-Source.zip -d .
 
-      - name: Remove duplicate Gradle files
+      - name: Prepare Gradle project
         run: |
           cd CEV-MTik-Manager-Android-V1
-          rm -f build.gradle
-          rm -f app/build.gradle
-          rm -f settings.gradle
+          rm -f build.gradle app/build.gradle settings.gradle
+          test -f build.gradle.kts
+          test -f app/build.gradle.kts
+          test -f settings.gradle.kts
+          cat app/build.gradle.kts
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
@@ -38,20 +39,33 @@ jobs:
 
       - name: Install Android SDK packages
         run: |
-          sdkmanager --install \
-            "platform-tools" \
-            "platforms;android-35" \
-            "build-tools;35.0.0"
+          sdkmanager --install "platform-tools" "platforms;android-35" "build-tools;35.0.0"
 
-      - name: Build debug APK
+      - name: Build clean debug APK
         uses: gradle/gradle-build-action@v3
         with:
           gradle-version: '8.9'
-          arguments: -p CEV-MTik-Manager-Android-V1 assembleDebug --stacktrace
+          arguments: -p CEV-MTik-Manager-Android-V1 clean assembleDebug --stacktrace
 
-      - name: Upload APK artifact
+      - name: Validate APK structure, manifest and signature
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="CEV-MTik-Manager-Android-V1/app/build/outputs/apk/debug/app-debug.apk"
+          AAPT="$ANDROID_HOME/build-tools/35.0.0/aapt"
+          APKSIGNER="$ANDROID_HOME/build-tools/35.0.0/apksigner"
+          ZIPALIGN="$ANDROID_HOME/build-tools/35.0.0/zipalign"
+          test -s "$APK"
+          unzip -t "$APK"
+          "$AAPT" dump badging "$APK"
+          "$AAPT" dump permissions "$APK"
+          "$ZIPALIGN" -c -v 4 "$APK"
+          "$APKSIGNER" verify --verbose --print-certs "$APK"
+          sha256sum "$APK"
+
+      - name: Upload validated APK
         uses: actions/upload-artifact@v4
         with:
-          name: CEV-MTik-Manager-Android-debug
+          name: CEV-MTik-Manager-Android-validated
           path: CEV-MTik-Manager-Android-V1/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
