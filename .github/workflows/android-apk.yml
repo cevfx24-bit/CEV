@@ -1,3 +1,4 @@
+
 name: Build CEV-MTik-Manager Android APK
 
 on:
@@ -10,6 +11,7 @@ jobs:
   build:
     name: Build and validate Android APK
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -30,7 +32,6 @@ jobs:
           test -f build.gradle.kts
           test -f app/build.gradle.kts
           test -f settings.gradle.kts
-          cat app/build.gradle.kts
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
@@ -39,13 +40,33 @@ jobs:
 
       - name: Install Android SDK packages
         run: |
-          sdkmanager --install "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+          sdkmanager --install \
+            "platform-tools" \
+            "platforms;android-35" \
+            "build-tools;35.0.0"
 
-      - name: Build clean debug APK
-        uses: gradle/gradle-build-action@v3
+      - name: Set up Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
-          arguments: -p CEV-MTik-Manager-Android-V1 clean assembleDebug --stacktrace
+
+      - name: Build clean debug APK with retry
+        shell: bash
+        run: |
+          set -e
+          for attempt in 1 2 3 4 5; do
+            echo "Build attempt $attempt of 5"
+            if gradle -p CEV-MTik-Manager-Android-V1 clean assembleDebug --stacktrace; then
+              echo "Build successful!"
+              exit 0
+            fi
+            if [ "$attempt" -lt 5 ]; then
+              echo "Build failed. Waiting before retry..."
+              sleep $((attempt * 30))
+            fi
+          done
+          echo "Build failed after 5 attempts."
+          exit 1
 
       - name: Validate APK structure, manifest and signature
         shell: bash
@@ -55,6 +76,7 @@ jobs:
           AAPT="$ANDROID_HOME/build-tools/35.0.0/aapt"
           APKSIGNER="$ANDROID_HOME/build-tools/35.0.0/apksigner"
           ZIPALIGN="$ANDROID_HOME/build-tools/35.0.0/zipalign"
+
           test -s "$APK"
           unzip -t "$APK"
           "$AAPT" dump badging "$APK"
